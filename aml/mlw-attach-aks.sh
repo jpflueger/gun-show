@@ -77,6 +77,8 @@ fi
 
 az extension add --name azure-cli-ml
 
+az account list -o table
+
 PROVISIONING_STATE=$(az ml computetarget show \
   --name $MLWAKS_NAME \
   --workspace-name $MLW_NAME \
