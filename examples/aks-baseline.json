@@ -1,0 +1,684 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "baseName": {
+      "type": "string"
+    },
+    "vnetAddressSpace": {
+      "type": "string",
+      "defaultValue": "10.240.0.0/16"
+    },
+    "subnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.240.0.0/22"
+    }
+  },
+  "functions": [],
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2019-10-01",
+      "name": "law",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "baseName": {
+              "type": "string"
+            },
+            "retentionInDays": {
+              "type": "int",
+              "defaultValue": 30
+            },
+            "skuName": {
+              "type": "string",
+              "defaultValue": "PerGB2018"
+            }
+          },
+          "functions": [],
+          "resources": [
+            {
+              "type": "Microsoft.OperationalInsights/workspaces",
+              "apiVersion": "2020-08-01",
+              "name": "[format('log-{0}-{1}', parameters('baseName'), guid(resourceGroup().id, parameters('baseName')))]",
+              "location": "[resourceGroup().location]",
+              "properties": {
+                "retentionInDays": "[parameters('retentionInDays')]",
+                "sku": {
+                  "name": "[parameters('skuName')]"
+                }
+              }
+            }
+          ],
+          "outputs": {
+            "id": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.OperationalInsights/workspaces', format('log-{0}-{1}', parameters('baseName'), guid(resourceGroup().id, parameters('baseName'))))]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2019-10-01",
+      "name": "acr",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          },
+          "logAnalyticsWorkspaceResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law'), '2019-10-01').outputs.id.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "baseName": {
+              "type": "string"
+            },
+            "logAnalyticsWorkspaceResourceId": {
+              "type": "string"
+            }
+          },
+          "functions": [],
+          "variables": {
+            "acrName": "[format('acr{0}', parameters('baseName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerRegistry/registries",
+              "apiVersion": "2019-12-01-preview",
+              "name": "[variables('acrName')]",
+              "location": "[resourceGroup().location]",
+              "sku": {
+                "name": "Basic"
+              }
+            },
+            {
+              "type": "Microsoft.ContainerRegistry/registries/providers/diagnosticSettings",
+              "apiVersion": "2017-05-01-preview",
+              "name": "[concat(variables('acrName'), '/Microsoft.Insights/default')]",
+              "properties": {
+                "workspaceId": "[parameters('logAnalyticsWorkspaceResourceId')]",
+                "metrics": [
+                  {
+                    "timeGrain": "PT1M",
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ],
+                "logs": [
+                  {
+                    "category": "ContainerRegistryRepositoryEvents",
+                    "enabled": true
+                  },
+                  {
+                    "category": "ContainerRegistryLoginEvents",
+                    "enabled": true
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerRegistry/registries', variables('acrName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "name": {
+              "type": "string",
+              "value": "[variables('acrName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'law')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2019-10-01",
+      "name": "vnet",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          },
+          "logAnalyticsWorkspaceResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law'), '2019-10-01').outputs.id.value]"
+          },
+          "vnetAddressSpace": {
+            "value": "[parameters('vnetAddressSpace')]"
+          },
+          "subnetAddressPrefix": {
+            "value": "[parameters('subnetAddressPrefix')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "baseName": {
+              "type": "string"
+            },
+            "logAnalyticsWorkspaceResourceId": {
+              "type": "string"
+            },
+            "vnetAddressSpace": {
+              "type": "string"
+            },
+            "subnetAddressPrefix": {
+              "type": "string"
+            },
+            "vnetSubnetName": {
+              "type": "string",
+              "defaultValue": "default"
+            }
+          },
+          "functions": [],
+          "variables": {
+            "vnetName": "[format('vnet-{0}', parameters('baseName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2020-06-01",
+              "name": "[variables('vnetName')]",
+              "location": "[resourceGroup().location]",
+              "properties": {
+                "addressSpace": {
+                  "addressPrefixes": [
+                    "[parameters('vnetAddressSpace')]"
+                  ]
+                },
+                "subnets": [
+                  {
+                    "name": "[parameters('vnetSubnetName')]",
+                    "properties": {
+                      "addressPrefix": "[parameters('subnetAddressPrefix')]"
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks/providers/diagnosticSettings",
+              "apiVersion": "2017-05-01-preview",
+              "name": "[concat(variables('vnetName'), '/Microsoft.Insights/default')]",
+              "properties": {
+                "workspaceId": "[parameters('logAnalyticsWorkspaceResourceId')]",
+                "metrics": [
+                  {
+                    "category": "AllMetrics",
+                    "enabled": true
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('vnetName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "name": {
+              "type": "string",
+              "value": "[variables('vnetName')]"
+            },
+            "subnetName": {
+              "type": "string",
+              "value": "[parameters('vnetSubnetName')]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'law')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2019-10-01",
+      "name": "aks",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          },
+          "acrName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'acr'), '2019-10-01').outputs.name.value]"
+          },
+          "logAnalyticsWorkspaceResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'law'), '2019-10-01').outputs.id.value]"
+          },
+          "vnetName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vnet'), '2019-10-01').outputs.name.value]"
+          },
+          "vnetSubnetName": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'vnet'), '2019-10-01').outputs.subnetName.value]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "baseName": {
+              "type": "string"
+            },
+            "logAnalyticsWorkspaceResourceId": {
+              "type": "string"
+            },
+            "vnetName": {
+              "type": "string"
+            },
+            "vnetSubnetName": {
+              "type": "string"
+            },
+            "acrName": {
+              "type": "string"
+            },
+            "vnetResourceGroupName": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]"
+            },
+            "acrResourceGroupName": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().name]"
+            },
+            "kubernetesVersion": {
+              "type": "string",
+              "defaultValue": "1.17.11"
+            },
+            "serviceCidr": {
+              "type": "string",
+              "defaultValue": "172.16.0.0/16"
+            },
+            "dnsServiceIP": {
+              "type": "string",
+              "defaultValue": "172.16.0.10"
+            },
+            "dockerBridgeCidr": {
+              "type": "string",
+              "defaultValue": "172.18.0.1/16"
+            },
+            "agentCount": {
+              "type": "int",
+              "defaultValue": 3
+            },
+            "agentVmSize": {
+              "type": "string",
+              "defaultValue": "Standard_DS2_v2"
+            },
+            "agentDiskSizeGB": {
+              "type": "int",
+              "defaultValue": 30
+            }
+          },
+          "functions": [],
+          "variables": {
+            "clusterName": "[format('aks-{0}', parameters('baseName'))]",
+            "clusterNodeResourceGroup": "[format('rg-{0}-nodepools', variables('clusterName'))]",
+            "clusterVnetSubnetId": "[concat(resourceId(parameters('vnetResourceGroupName'), 'Microsoft.Network/virtualNetworks', parameters('vnetName')), '/subnets/', parameters('vnetSubnetName'))]",
+            "monitoringMetricsPublisherRoleDefinitionGuid": "3913510d-42f4-4e42-8a64-420c390055eb",
+            "acrPullRoleDefinitionGuid": "7f951dda-4ed3-4680-a7ca-43fe172d538d",
+            "networkContributorRoleDefinitionGuid": "4d97b98b-1d4f-4787-a291-c67834d212e7",
+            "virtualMachineContributorRoleDefinitionGuid": "9980e02c-c2be-4d73-94e8-173b1dc7cf3c",
+            "managedIdentityOperatorRoleDefinitionGuid": "f1a07417-d97a-45cb-824c-7a7467783830"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ContainerService/managedClusters",
+              "apiVersion": "2020-07-01",
+              "name": "[variables('clusterName')]",
+              "location": "[resourceGroup().location]",
+              "identity": {
+                "type": "SystemAssigned"
+              },
+              "sku": {
+                "name": "Basic",
+                "tier": "Free"
+              },
+              "properties": {
+                "kubernetesVersion": "[parameters('kubernetesVersion')]",
+                "dnsPrefix": "[parameters('baseName')]",
+                "nodeResourceGroup": "[variables('clusterNodeResourceGroup')]",
+                "enableRBAC": true,
+                "agentPoolProfiles": [
+                  {
+                    "name": "npdefault",
+                    "type": "VirtualMachineScaleSets",
+                    "mode": "System",
+                    "count": "[parameters('agentCount')]",
+                    "orchestratorVersion": "[parameters('kubernetesVersion')]",
+                    "osType": "Linux",
+                    "osDiskSizeGB": "[parameters('agentDiskSizeGB')]",
+                    "vmSize": "[parameters('agentVmSize')]",
+                    "maxPods": 30,
+                    "vnetSubnetID": "[variables('clusterVnetSubnetId')]"
+                  }
+                ],
+                "servicePrincipalProfile": {
+                  "clientId": "msi"
+                },
+                "addonProfiles": {
+                  "omsagent": {
+                    "enabled": true,
+                    "config": {
+                      "logAnalyticsWorkspaceResourceId": "[parameters('logAnalyticsWorkspaceResourceId')]"
+                    }
+                  },
+                  "KubeDashboard": {
+                    "enabled": false
+                  }
+                },
+                "networkProfile": {
+                  "networkPlugin": "azure",
+                  "networkPolicy": "azure",
+                  "loadBalancerSku": "standard",
+                  "serviceCidr": "[parameters('serviceCidr')]",
+                  "dnsServiceIP": "[parameters('dnsServiceIP')]",
+                  "dockerBridgeCidr": "[parameters('dockerBridgeCidr')]"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.ContainerService/managedClusters/providers/diagnosticSettings",
+              "apiVersion": "2017-05-01-preview",
+              "name": "[concat(variables('clusterName'), '/Microsoft.Insights/default')]",
+              "properties": {
+                "workspaceId": "[parameters('logAnalyticsWorkspaceResourceId')]",
+                "logs": [
+                  {
+                    "category": "kube-controller-manager",
+                    "enabled": true
+                  },
+                  {
+                    "category": "kube-audit-admin",
+                    "enabled": true
+                  },
+                  {
+                    "category": "guard",
+                    "enabled": true
+                  }
+                ]
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.ContainerService/managedClusters/providers/roleAssignments",
+              "apiVersion": "2018-09-01-preview",
+              "name": "[concat(variables('clusterName'), '/Microsoft.Authorization/', guid(resourceGroup().id, variables('clusterName'), variables('monitoringMetricsPublisherRoleDefinitionGuid')))]",
+              "properties": {
+                "roleDefinitionId": "[concat(subscription().id, '/providers/Microsoft.Authorization/roleDefinitions/', variables('monitoringMetricsPublisherRoleDefinitionGuid'))]",
+                "principalId": "[reference(resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))).addonProfiles.omsagent.identity.objectId]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2019-10-01",
+              "name": "ClusterResourceGroupManagedIdentityOperator",
+              "resourceGroup": "[variables('clusterNodeResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "principalId": {
+                    "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))).identityProfile.kubeletidentity.objectId]"
+                  },
+                  "roleDefinitionGuid": {
+                    "value": "[variables('managedIdentityOperatorRoleDefinitionGuid')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "parameters": {
+                    "principalId": {
+                      "type": "string"
+                    },
+                    "roleDefinitionGuid": {
+                      "type": "string"
+                    },
+                    "principalType": {
+                      "type": "string",
+                      "defaultValue": "ServicePrincipal"
+                    }
+                  },
+                  "functions": [],
+                  "variables": {
+                    "roleDefinitionId": "[concat(subscription().id, '/providers/Microsoft.Authorization/roleDefinitions/', parameters('roleDefinitionGuid'))]"
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2020-04-01-preview",
+                      "name": "[guid(resourceGroup().id, parameters('principalId'), parameters('roleDefinitionGuid'))]",
+                      "properties": {
+                        "principalId": "[parameters('principalId')]",
+                        "roleDefinitionId": "[variables('roleDefinitionId')]",
+                        "principalType": "[parameters('principalType')]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2019-10-01",
+              "name": "ClusterResourceGroupVirtualMachineContributor",
+              "resourceGroup": "[variables('clusterNodeResourceGroup')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "principalId": {
+                    "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))).identityProfile.kubeletidentity.objectId]"
+                  },
+                  "roleDefinitionGuid": {
+                    "value": "[variables('virtualMachineContributorRoleDefinitionGuid')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "parameters": {
+                    "principalId": {
+                      "type": "string"
+                    },
+                    "roleDefinitionGuid": {
+                      "type": "string"
+                    },
+                    "principalType": {
+                      "type": "string",
+                      "defaultValue": "ServicePrincipal"
+                    }
+                  },
+                  "functions": [],
+                  "variables": {
+                    "roleDefinitionId": "[concat(subscription().id, '/providers/Microsoft.Authorization/roleDefinitions/', parameters('roleDefinitionGuid'))]"
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Authorization/roleAssignments",
+                      "apiVersion": "2020-04-01-preview",
+                      "name": "[guid(resourceGroup().id, parameters('principalId'), parameters('roleDefinitionGuid'))]",
+                      "properties": {
+                        "principalId": "[parameters('principalId')]",
+                        "roleDefinitionId": "[variables('roleDefinitionId')]",
+                        "principalType": "[parameters('principalType')]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2019-10-01",
+              "name": "VnetSubnetNetworkContributor",
+              "resourceGroup": "[parameters('vnetResourceGroupName')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "vnetName": {
+                    "value": "[parameters('vnetName')]"
+                  },
+                  "principalId": {
+                    "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName')), '2020-07-01', 'full').identity.principalId]"
+                  },
+                  "roleDefinitionGuid": {
+                    "value": "[variables('networkContributorRoleDefinitionGuid')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "parameters": {
+                    "vnetName": {
+                      "type": "string"
+                    },
+                    "roleDefinitionGuid": {
+                      "type": "string"
+                    },
+                    "principalId": {
+                      "type": "string"
+                    }
+                  },
+                  "functions": [],
+                  "variables": {
+                    "roleDefinitionId": "[concat(subscription().id, '/providers/Microsoft.Authorization/roleDefinitions/', parameters('roleDefinitionGuid'))]"
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.Network/virtualNetworks/providers/roleAssignments",
+                      "apiVersion": "2018-09-01-preview",
+                      "name": "[concat(parameters('vnetName'), '/Microsoft.Authorization/', guid(resourceGroup().id, parameters('vnetName'), variables('roleDefinitionId')))]",
+                      "properties": {
+                        "roleDefinitionId": "[variables('roleDefinitionId')]",
+                        "principalId": "[parameters('principalId')]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Resources/deployments",
+              "apiVersion": "2019-10-01",
+              "name": "AcrPull",
+              "resourceGroup": "[parameters('acrResourceGroupName')]",
+              "properties": {
+                "expressionEvaluationOptions": {
+                  "scope": "inner"
+                },
+                "mode": "Incremental",
+                "parameters": {
+                  "acrName": {
+                    "value": "[parameters('acrName')]"
+                  },
+                  "principalId": {
+                    "value": "[reference(resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))).identityProfile.kubeletidentity.objectId]"
+                  },
+                  "roleAssignmentName": {
+                    "value": "[guid(resourceGroup().id, variables('clusterName'), variables('acrPullRoleDefinitionGuid'))]"
+                  },
+                  "roleDefinitionGuid": {
+                    "value": "[variables('acrPullRoleDefinitionGuid')]"
+                  }
+                },
+                "template": {
+                  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                  "contentVersion": "1.0.0.0",
+                  "parameters": {
+                    "acrName": {
+                      "type": "string"
+                    },
+                    "roleDefinitionGuid": {
+                      "type": "string"
+                    },
+                    "principalId": {
+                      "type": "string"
+                    },
+                    "roleAssignmentName": {
+                      "type": "string"
+                    }
+                  },
+                  "functions": [],
+                  "variables": {
+                    "acrPullRoleDefinitionId": "[concat(subscription().id, '/providers/Microsoft.Authorization/roleDefinitions/', parameters('roleDefinitionGuid'))]"
+                  },
+                  "resources": [
+                    {
+                      "type": "Microsoft.ContainerRegistry/registries/providers/roleAssignments",
+                      "apiVersion": "2018-09-01-preview",
+                      "name": "[concat(parameters('acrName'), '/Microsoft.Authorization/', parameters('roleAssignmentName'))]",
+                      "properties": {
+                        "roleDefinitionId": "[variables('acrPullRoleDefinitionId')]",
+                        "principalId": "[parameters('principalId')]"
+                      }
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ContainerService/managedClusters', variables('clusterName'))]"
+              ]
+            }
+          ]
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'acr')]",
+        "[resourceId('Microsoft.Resources/deployments', 'law')]",
+        "[resourceId('Microsoft.Resources/deployments', 'vnet')]"
+      ]
+    }
+  ]
+}
