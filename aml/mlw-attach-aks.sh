@@ -35,7 +35,7 @@ while getopts ":w:c:g:a:f" arg; do
         echo "Error: missing argument for -${arg} option"
         exit 1
       fi
-      if [[ ! $OPTARG =~ ^/subscriptions/.+/resourcegroups/.+/providers/Microsoft.ContainerService/managedClusters/.+$ ]]; then
+      if [[ ! $(tr "[:upper:]" "[:lower:]" <<<${OPTARG}) =~ ^/subscriptions/.+/resourcegroups/.+/providers/microsoft.containerservice/managedclusters/.+$ ]]; then
         echo "Error: -a option is not a valid AKS Resource Identifier => $OPTARG"
         exit 1
       fi
