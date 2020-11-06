@@ -75,6 +75,8 @@ if [[ -z "$AKS_ID" ]]; then
   exit 1
 fi
 
+az extension add --name azure-cli-ml
+
 PROVISIONING_STATE=$(az ml computetarget show \
   --name $MLWAKS_NAME \
   --workspace-name $MLW_NAME \
