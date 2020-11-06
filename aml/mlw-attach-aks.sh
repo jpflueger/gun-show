@@ -36,7 +36,7 @@ while getopts ":w:c:g:a:f" arg; do
         exit 1
       fi
       if [[ ! $OPTARG =~ ^/subscriptions/.+/resourcegroups/.+/providers/Microsoft.ContainerService/managedClusters/.+$ ]]; then
-        echo "Error: -a option is not a valid AKS Resource Identifier"
+        echo "Error: -a option is not a valid AKS Resource Identifier => $OPTARG"
         exit 1
       fi
       AKS_ID="${OPTARG}"
